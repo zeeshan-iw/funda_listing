@@ -1,0 +1,124 @@
+Metadata-Version: 2.4
+Name: clear-html
+Version: 0.5.0
+Summary: Clean and normalize HTML.
+Project-URL: Homepage, https://github.com/zytedata/clear-html
+Project-URL: Source, https://github.com/zytedata/clear-html
+Project-URL: Tracker, https://github.com/zytedata/clear-html/issues
+Project-URL: Release notes, https://github.com/zytedata/clear-html/blob/main/CHANGES.rst
+Author-email: Zyte Group Ltd <info@zyte.com>
+License-Expression: MIT
+License-File: LICENSE
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Requires-Python: >=3.9
+Requires-Dist: attrs>=20.3.0
+Requires-Dist: html-text>=0.5.2
+Requires-Dist: lxml>=4.4.3
+Description-Content-Type: text/x-rst
+
+==========
+clear-html
+==========
+
+.. image:: https://img.shields.io/pypi/v/clear-html.svg
+   :target: https://pypi.python.org/pypi/clear-html
+   :alt: PyPI Version
+
+.. image:: https://img.shields.io/pypi/pyversions/clear-html.svg
+   :target: https://pypi.python.org/pypi/clear-html
+   :alt: Supported Python Versions
+
+.. image:: https://github.com/zytedata/clear-html/workflows/tox/badge.svg
+   :target: https://github.com/zytedata/clear-html/actions
+   :alt: Build Status
+
+.. image:: https://codecov.io/github/zytedata/clear-html/coverage.svg?branch=master
+   :target: https://codecov.io/gh/zytedata/clear-html
+   :alt: Coverage report
+
+Clean and normalize HTML. Preserve embeddings (e.g. Twitter, Instagram, etc)
+
+.. contents::
+
+Quick start
+***********
+
+Installation
+============
+
+Install the library with pip::
+
+    pip install clear-html
+
+Usage
+=====
+
+Example usage with lxml:
+
+.. code-block:: python
+
+    from lxml.html import fromstring
+    from clear_html import clean_node, cleaned_node_to_html
+
+    html="""
+            <div style="color:blue" id="main_content">
+                Some text to be
+                <div>cleaned up!</div>
+            </div>
+         """
+    node = fromstring(html)
+    cleaned_node = clean_node(node)
+    cleaned_html = cleaned_node_to_html(cleaned_node)
+    print(cleaned_html)
+
+
+Example usage with Parsel:
+
+.. code-block:: python
+
+    from parsel import Selector
+    from clear_html import clean_node, cleaned_node_to_html
+
+    selector = Selector(text="""<html>
+                                <body>
+                                    <h1>Hello!</h1>
+                                    <div style="color:blue" id="main_content">
+                                        Some text to be
+                                        <div>cleaned up!</div>
+                                    </div>
+                                </body>
+                                </html>""")
+    selector = selector.css("#main_content")
+    cleaned_node = clean_node(selector[0].root)
+    cleaned_html = cleaned_node_to_html(cleaned_node)
+    print(cleaned_html)
+
+Both of the different approaches above would print the following:
+
+.. code-block:: HTML
+
+    <article>
+
+    <p>Some text to be</p>
+
+    <p>cleaned up!</p>
+
+    </article>
+
+
+Other interesting functions:
+
+* ``cleaned_node_to_text``: convert the cleaned node to plain text
+* ``formatted_text.clean_doc``: low level method to control more aspects
+  of the cleaning up

@@ -1,0 +1,6 @@
+scrapy
+attrs
+web-poet
+scrapy-poet
+scrapy-zyte-api
+zyte_common_items

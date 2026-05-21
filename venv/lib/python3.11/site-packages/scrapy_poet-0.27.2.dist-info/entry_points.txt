@@ -1,0 +1,2 @@
+[scrapy.commands]
+savefixture = scrapy_poet.commands:SaveFixtureCommand

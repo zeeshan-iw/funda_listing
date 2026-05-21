@@ -1,0 +1,68 @@
+Metadata-Version: 2.4
+Name: zyte-common-items
+Version: 0.29.0
+Summary: Item definitions for Zyte API schema
+Author-email: Zyte Group Ltd <info@zyte.com>
+Project-URL: source, https://github.com/zytedata/zyte-common-items
+Project-URL: issues, https://github.com/zytedata/zyte-common-items/issues
+Project-URL: documentation, https://zyte-common-items.readthedocs.io/en/stable/
+Project-URL: changelog, https://github.com/zytedata/zyte-common-items/blob/main/CHANGELOG.rst
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Requires-Python: >=3.9
+Description-Content-Type: text/x-rst
+License-File: LICENSE
+Requires-Dist: attrs>=22.2.0
+Requires-Dist: clear-html>=0.4.0
+Requires-Dist: itemadapter>=0.8.0
+Requires-Dist: Jinja2>=2.7
+Requires-Dist: price-parser>=0.3.4
+Requires-Dist: web-poet>=0.14.0
+Requires-Dist: zyte-parsers>=0.5.0
+Dynamic: license-file
+
+=================
+zyte-common-items
+=================
+
+.. image:: https://img.shields.io/pypi/v/zyte-common-items.svg
+   :target: https://pypi.python.org/pypi/zyte-common-items
+   :alt: PyPI Version
+
+.. image:: https://img.shields.io/pypi/pyversions/zyte-common-items.svg
+   :target: https://pypi.python.org/pypi/zyte-common-items
+   :alt: Supported Python Versions
+
+.. image:: https://github.com/zytedata/zyte-common-items/workflows/tox/badge.svg
+   :target: https://github.com/zytedata/zyte-common-items/actions
+   :alt: Build Status
+
+.. image:: https://codecov.io/github/zytedata/zyte-common-items/coverage.svg?branch=master
+   :target: https://codecov.io/gh/zytedata/zyte-common-items
+   :alt: Coverage report
+
+.. description starts
+
+``zyte-common-items`` is a Python 3.9+ library of item_ and `page object`_
+classes for web data extraction that we use at Zyte_ to maximize opportunities
+for code reuse.
+
+.. _item: https://docs.scrapy.org/en/latest/topics/items.html
+.. _page object: https://web-poet.readthedocs.io/en/stable/
+.. _Zyte: https://www.zyte.com/
+
+.. description ends
+
+* Documentation: https://zyte-common-items.readthedocs.io/en/latest/
+* License: BSD 3-clause

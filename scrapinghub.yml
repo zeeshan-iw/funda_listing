@@ -1,0 +1,7 @@
+projects:
+  development: 862318
+
+requirements:
+  file: requirements/requirements.txt
+
+stack: scrapy:2.11

@@ -1,0 +1,2 @@
+[console_scripts]
+zyte-api = zyte_api.__main__:_main

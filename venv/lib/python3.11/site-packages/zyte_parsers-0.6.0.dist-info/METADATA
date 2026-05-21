@@ -1,0 +1,69 @@
+Metadata-Version: 2.4
+Name: zyte-parsers
+Version: 0.6.0
+Summary: Parsing of data from web pages.
+Project-URL: Homepage, https://github.com/zytedata/zyte-parsers
+Project-URL: Documentation, https://zyte-parsers.readthedocs.io/
+Project-URL: Source, https://github.com/zytedata/zyte-parsers
+Project-URL: Tracker, https://github.com/zytedata/zyte-parsers/issues
+Project-URL: Release notes, https://zyte-parsers.readthedocs.io/en/latest/changelog.html
+Author-email: Zyte Group Ltd <info@zyte.com>
+License-Expression: MIT
+License-File: LICENSE
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Requires-Python: >=3.9
+Requires-Dist: attrs>=21.3.0
+Requires-Dist: gtin-validator>=1.0.3
+Requires-Dist: html-text
+Requires-Dist: lxml
+Requires-Dist: parsel
+Requires-Dist: price-parser>=0.3.4
+Requires-Dist: python-stdnum>=1.19
+Requires-Dist: six
+Requires-Dist: w3lib
+Description-Content-Type: text/x-rst
+
+============
+zyte-parsers
+============
+
+.. image:: https://img.shields.io/pypi/v/zyte-parsers.svg
+   :target: https://pypi.python.org/pypi/zyte-parsers
+   :alt: PyPI Version
+
+.. image:: https://img.shields.io/pypi/pyversions/zyte-parsers.svg
+   :target: https://pypi.python.org/pypi/zyte-parsers
+   :alt: Supported Python Versions
+
+.. image:: https://github.com/zytedata/zyte-parsers/workflows/tox/badge.svg
+   :target: https://github.com/zytedata/zyte-parsers/actions
+   :alt: Build Status
+
+.. image:: https://codecov.io/github/zytedata/zyte-parsers/coverage.svg?branch=master
+   :target: https://codecov.io/gh/zytedata/zyte-parsers
+   :alt: Coverage report
+
+.. image:: https://readthedocs.org/projects/zyte-parsers/badge/?version=stable
+   :target: https://zyte-parsers.readthedocs.io/en/stable/?badge=stable
+   :alt: Documentation Status
+
+.. description starts
+
+``zyte-parsers`` is a Python 3.9+ library that contains functions to extract
+data from webpage parts.
+
+.. description ends
+
+* Documentation: https://zyte-parsers.readthedocs.io/en/latest/
+* License: BSD 3-clause
