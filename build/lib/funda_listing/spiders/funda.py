@@ -25,7 +25,6 @@ class FundaSpider(scrapy.Spider):
                 "overwrite": True,
             }
         },
-        "ZYTE_API_EXPERIMENTAL_COOKIES_ENABLED": True,
         "CONCURRENT_REQUESTS": 10,
         "DOWNLOAD_DELAY": 1,
         "AUTOTHROTTLE_ENABLED": True,
@@ -38,8 +37,9 @@ class FundaSpider(scrapy.Spider):
     FUNDA_URLS = {
         "rent_noord_holland": "https://www.funda.nl/zoeken/huur?selected_area=[%22provincie-noord-holland%22]&availability=[%22available%22]",
         "buy_noord_holland":  "https://www.funda.nl/zoeken/koop?selected_area=[%22provincie-noord-holland%22]&availability=[%22available%22]",
-        # "new_noord_holland":  "https://www.funda.nl/zoeken/koop?selected_area=[%22provincie-noord-holland%22]&construction_type=[%22newly_built%22]&type=[%22group%22]",
         "sold_noord_holland": "https://www.funda.nl/zoeken/koop?selected_area=[%22provincie-noord-holland%22]&availability=[%22negotiations%22,%22unavailable%22]",
+        "daily_noord_holland": "https://www.funda.nl/zoeken/koop?selected_area=[%22provincie-noord-holland%22]&publication_date=%221%22&availability=[%22available%22]",
+        "daily_rent_noord_holland": "https://www.funda.nl/zoeken/huur?selected_area=[%22provincie-noord-holland%22]&publication_date=%221%22&availability=[%22available%22]",
     }
 
     def start_requests(self):
@@ -60,7 +60,7 @@ class FundaSpider(scrapy.Spider):
                     url,
                     callback=self.parse_listing,
                     meta={
-                        "zyte_api": {"browserHtml": True, "javascript": True},
+                        "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
                         "job_key": job_key,
                     },
                 )
@@ -77,7 +77,7 @@ class FundaSpider(scrapy.Spider):
                         extra_url.strip(),
                         callback=self.parse_listing,
                         meta={
-                            "zyte_api": {"browserHtml": True, "javascript": True},
+                            "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
                             "job_key": "extra_url",
                         },
                     )
@@ -88,7 +88,7 @@ class FundaSpider(scrapy.Spider):
             yield scrapy.Request(
                 "https://www.funda.nl/sitemap_index.xml/",
                 callback=self.parse_sitemap_index,
-                meta={"zyte_api": {"browserHtml": True}},
+                meta={"zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True}},
             )
 
     def parse_sitemap_index(self, response):
@@ -109,6 +109,8 @@ class FundaSpider(scrapy.Spider):
             '//script[@data-hid="result-list-metadata"]/text()'
         ).get()
 
+        items = []
+
         try:
             data = json.loads(raw_text)
             items = data.get("itemListElement", [])
@@ -126,7 +128,7 @@ class FundaSpider(scrapy.Spider):
                 yield response.follow(
                     url,
                     callback=self.parse_detail,
-                    meta={"zyte_api": {"browserHtml": True, "javascript": True}},
+                    meta={"zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True}},
                 )
 
         except Exception as e:
@@ -135,12 +137,28 @@ class FundaSpider(scrapy.Spider):
         # ------------------------------------------------------------------
         # Pagination — increment ?page= param
         # ------------------------------------------------------------------
-        next_page = response.xpath(
-            '//nav[@data-testid="pagination"]'
-            '//a[@aria-label="Volgende" and not(contains(@class, "cursor-default"))]/@href'
-        ).get()
+        # next_page = response.xpath(
+        #     '//nav[@data-testid="pagination"]'
+        #     '//a[@aria-label="Volgende" and not(contains(@class, "cursor-default"))]/@href'
+        # ).get()
 
-        if next_page:
+        # if next_page:
+        #     parsed = urlparse(response.url)
+        #     query = parse_qs(parsed.query)
+        #     current_page = int(query.get("page", [1])[0])
+        #     query["page"] = [str(current_page + 1)]
+        #     new_query = urlencode(query, doseq=True)
+        #     next_url = urlunparse(parsed._replace(query=new_query))
+        #     yield response.follow(
+        #         next_url,
+        #         callback=self.parse_listing,
+        #         meta={
+        #             "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
+        #             "job_key": response.meta.get("job_key"),
+        #         },
+        #     )
+
+        if items:   # items is the list you already parsed from JSON-LD
             parsed = urlparse(response.url)
             query = parse_qs(parsed.query)
             current_page = int(query.get("page", [1])[0])
@@ -151,7 +169,7 @@ class FundaSpider(scrapy.Spider):
                 next_url,
                 callback=self.parse_listing,
                 meta={
-                    "zyte_api": {"browserHtml": True, "javascript": True},
+                    "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
                     "job_key": response.meta.get("job_key"),
                 },
             )

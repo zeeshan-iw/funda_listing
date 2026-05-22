@@ -3,7 +3,7 @@ BOT_NAME = "funda_listing"
 SPIDER_MODULES = ["funda_listing.spiders"]
 NEWSPIDER_MODULE = "funda_listing.spiders"
 
-ZYTE_API_KEY = "d252364d91504c58b97bdfc0b9b9a855"
+ZYTE_API_KEY = "69b3fdca86744152a8bd1d48757d0e67"
 
 ADDONS = {
     "scrapy_zyte_api.Addon": 500,
