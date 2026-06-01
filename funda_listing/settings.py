@@ -15,5 +15,7 @@ DOWNLOADER_MIDDLEWARES = {
 
 # Remove SPIDER_MIDDLEWARES entirely
 
+COOKIES_ENABLED = False
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"

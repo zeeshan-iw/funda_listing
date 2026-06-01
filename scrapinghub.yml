@@ -4,4 +4,4 @@ projects:
 requirements:
   file: requirements/requirements.txt
 
-stack: scrapy:2.11
+stack: scrapy:2.13

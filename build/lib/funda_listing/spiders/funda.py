@@ -1,6 +1,7 @@
 import json
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+import attrs
 import scrapy
 
 from funda_listing.pages.funda.com.product import FundaListingPage
@@ -18,10 +19,9 @@ class FundaSpider(scrapy.Spider):
 
     custom_settings = {
         "FEEDS": {
-            "funda_output.json": {
-                "format": "json",
+            "funda_output.jl": {
+                "format": "jsonlines",
                 "encoding": "utf8",
-                "indent": 4,
                 "overwrite": True,
             }
         },
@@ -42,14 +42,18 @@ class FundaSpider(scrapy.Spider):
         "daily_rent_noord_holland": "https://www.funda.nl/zoeken/huur?selected_area=[%22provincie-noord-holland%22]&publication_date=%221%22&availability=[%22available%22]",
     }
 
-    def start_requests(self):
-        if self.item_test:
+    async def start(self):
+        keys_arg = getattr(self, "job_keys", None)
+        extra_url = getattr(self, "extra_url", None)
 
-            keys_arg = getattr(self, "job_keys", None)
+        if self.item_test or keys_arg or extra_url:
+
             if keys_arg:
                 selected_keys = [k.strip() for k in keys_arg.split(",") if k.strip()]
-            else:
+            elif not extra_url:
                 selected_keys = list(self.FUNDA_URLS.keys())
+            else:
+                selected_keys = []
 
             for job_key in selected_keys:
                 url = self.FUNDA_URLS.get(job_key)
@@ -68,7 +72,6 @@ class FundaSpider(scrapy.Spider):
             # ------------------------------------------------------------------
             # Single extra URL — passed via -a extra_url="https://..."
             # ------------------------------------------------------------------
-            extra_url = getattr(self, "extra_url", None)
             if extra_url:
                 parsed = urlparse(extra_url.strip())
                 if parsed.scheme in ("http", "https") and parsed.netloc:
@@ -97,7 +100,11 @@ class FundaSpider(scrapy.Spider):
         ).getall()
         for url in sitemap_urls:
             if "/detail/" in url:
-                yield response.follow(url, callback=self.parse_detail)
+                yield response.follow(
+                    url,
+                    callback=self.parse_detail,
+                    meta={"zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True}},
+                )
             elif "sitemap-detail" in url:
                 yield scrapy.Request(
                     url,
@@ -110,6 +117,9 @@ class FundaSpider(scrapy.Spider):
         ).get()
 
         items = []
+
+        if not raw_text:
+            return
 
         try:
             data = json.loads(raw_text)
@@ -134,31 +144,7 @@ class FundaSpider(scrapy.Spider):
         except Exception as e:
             self.logger.error("JSON parse error: %s | %s", response.url, e)
 
-        # ------------------------------------------------------------------
-        # Pagination — increment ?page= param
-        # ------------------------------------------------------------------
-        # next_page = response.xpath(
-        #     '//nav[@data-testid="pagination"]'
-        #     '//a[@aria-label="Volgende" and not(contains(@class, "cursor-default"))]/@href'
-        # ).get()
-
-        # if next_page:
-        #     parsed = urlparse(response.url)
-        #     query = parse_qs(parsed.query)
-        #     current_page = int(query.get("page", [1])[0])
-        #     query["page"] = [str(current_page + 1)]
-        #     new_query = urlencode(query, doseq=True)
-        #     next_url = urlunparse(parsed._replace(query=new_query))
-        #     yield response.follow(
-        #         next_url,
-        #         callback=self.parse_listing,
-        #         meta={
-        #             "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
-        #             "job_key": response.meta.get("job_key"),
-        #         },
-        #     )
-
-        if items:   # items is the list you already parsed from JSON-LD
+        if items:
             parsed = urlparse(response.url)
             query = parse_qs(parsed.query)
             current_page = int(query.get("page", [1])[0])
@@ -174,6 +160,12 @@ class FundaSpider(scrapy.Spider):
                 },
             )
 
-    async def parse_detail(self, response, page: FundaListingPage):
-        item = await page.to_item()
-        yield item
+    async def parse_detail(self, response, page: FundaListingPage):  # noqa: ARG002
+        if page.status != "available":
+            yield {
+                "status": page.status,
+                "address": attrs.asdict(page.address),
+            }
+        else:
+            item = await page.to_item()
+            yield item

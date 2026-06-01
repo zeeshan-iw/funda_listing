@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
@@ -8,6 +9,7 @@ from web_poet import HttpClient, Returns, WebPage, field, handle_urls
 
 from funda_listing.items import Address, Agent, PriceInfo, RangeValue, FundaListingItem
 
+logger = logging.getLogger(__name__)
 
 
 DUTCH_TO_ENGLISH: Dict[str, str] = {
@@ -114,7 +116,6 @@ DUTCH_TO_ENGLISH: Dict[str, str] = {
 
     # Outdoor — slash-normalised variants (slash → underscore via _translate_key)
     "balkon_dakterras":                     "balcony_or_rooftop_terrace",
-    "schuur_berging":                       "shed_storage",
 
     # Areas
     "wonen":                                "living_area_sqm",
@@ -133,7 +134,6 @@ DUTCH_TO_ENGLISH: Dict[str, str] = {
     "onderhoudsplan":                       "maintenance_plan",
     "opstalverzekering":                    "building_insurance",
     "oorspronkelijke_vraagprijs":       "original_asking_price",
-    "vraagprijs_per_m2":                "asking_price_per_sqm",
     "ligging_tuin":    "garden_position",
 }
 
@@ -155,7 +155,6 @@ SECTION_TITLE_MAP: Dict[str, str] = {
     "kadastrale informatie":    "cadastral_information",
     "vve":                      "homeowners_association",
     "energie":                  "energy",
-    "duurzaamheid":             "sustainability",
     "vve checklist":            "homeowners_association_checklist",
     "vve-checklist":            "homeowners_association_checklist",
     "vve_checklist":            "homeowners_association_checklist",
@@ -305,11 +304,11 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
     @field
     def listing_category(self) -> str:
         """Requirement #2 — derive buy / rent / new from scraped data."""
-        if self.construction_type and "nieuw" in self.construction_type.lower():
-            return "new"
         ot = (self.offering_type or "").lower()
         if "huur" in ot or "rent" in ot:
             return "rent"
+        if self.construction_type and "nieuw" in self.construction_type.lower():
+            return "new"
         return "buy"
 
     @field
@@ -357,7 +356,7 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
             house_number_suffix=h_suffix,
             street_name=street,
             municipality=targeting.get("gemeente") or "",
-            wijk=raw.get("city") or "",
+            wijk=targeting.get("wijk") or "",
             neighbourhood=(
                 raw.get("neighborhood", {}).get("name")
                 if isinstance(raw.get("neighborhood"), dict)
@@ -567,10 +566,10 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
 
 
     @field
-    async def agents(self) -> List[Dict[str, Any]]:
+    async def agents(self) -> List[Agent]:
         return await self.get_broker_details()
 
-    async def get_broker_details(self) -> List[Dict[str, Any]]:
+    async def get_broker_details(self) -> List[Agent]:
         data_str = json.dumps(self.nuxt_data)
         pattern = r'broker_?id(?:["\']:\s*["\']|[:=])(\d+)'
         found_ids = set(re.findall(pattern, data_str, re.IGNORECASE))
@@ -580,9 +579,9 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
 
         tasks = [self.fetch_single_broker(b_id) for b_id in found_ids]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [r for r in results if isinstance(r, dict) and r]
+        return [r for r in results if isinstance(r, Agent)]
 
-    async def fetch_single_broker(self, b_id: str) -> Dict[str, Any]:
+    async def fetch_single_broker(self, b_id: str) -> Optional[Agent]:
         url = f"https://www.funda.nl/makelaar/{b_id}/"
         try:
             response = await self.http.get(url)
@@ -634,18 +633,19 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
                 str(self.nuxt_data.get("tracking", {}).get("main_broker_id")) == b_id
             )
 
-            return {
-                "id":           b_id,
-                "office_id":    str(final_office_id) if final_office_id else "",
-                "relative_url": f"/makelaar/{b_id}/",
-                "is_primary":   is_primary,
-                "logo_id":      logo_id_str,
-                "logo_url":     logo_url_str,
-                "name":         resolved.get("displayName") or "",
-                "association":  resolved.get("affiliation") or "",
-            }
-        except Exception:
-            return {}
+            return Agent(
+                id=b_id,
+                office_id=str(final_office_id) if final_office_id else "",
+                relative_url=f"/makelaar/{b_id}/",
+                is_primary=is_primary,
+                logo_id=logo_id_str,
+                logo_url=logo_url_str,
+                name=resolved.get("displayName") or "",
+                association=resolved.get("affiliation") or "",
+            )
+        except Exception as exc:
+            logger.warning("fetch_single_broker failed for broker %s: %s", b_id, exc)
+            return None
 
 
     @field
