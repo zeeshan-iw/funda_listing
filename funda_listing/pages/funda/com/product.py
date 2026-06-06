@@ -295,11 +295,11 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
 
     @field
     def status(self) -> str:
-        """Requirement #5 — map Dutch status to English granular value."""
         raw = (
             self.nuxt_data.get("tracking", {}).get("listing_status", "") or ""
         ).lower().strip()
-        return STATUS_MAP.get(raw, raw)
+        normalized = raw.replace(" ", "_")
+        return STATUS_MAP.get(normalized, normalized)
 
     @field
     def listing_category(self) -> str:
@@ -587,7 +587,7 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
             response = await self.http.get(url)
             script_text = response.xpath('//script[@id="__NUXT_DATA__"]/text()').get()
             if not script_text:
-                return {}
+                return None
 
             broker_raw_list = json.loads(script_text)
             blueprint = next(
@@ -602,7 +602,7 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
             )
 
             if not blueprint:
-                return {}
+                return None
 
             resolved = self.hydrate(blueprint, broker_raw_list)
 

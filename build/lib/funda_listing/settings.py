@@ -10,10 +10,8 @@ ADDONS = {
 }
 
 DOWNLOADER_MIDDLEWARES = {
-    "scrapy_poet.InjectionMiddleware": 543,   # 👈 moved here from SPIDER_MIDDLEWARES
+    "scrapy_poet.InjectionMiddleware": 543,
 }
-
-# Remove SPIDER_MIDDLEWARES entirely
 
 COOKIES_ENABLED = False
 
