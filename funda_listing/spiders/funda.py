@@ -26,13 +26,6 @@ class FundaSpider(scrapy.Spider):
     name = "funda"
 
     custom_settings = {
-        "FEEDS": {
-            "funda_output.jl": {
-                "format": "jsonlines",
-                "encoding": "utf8",
-                "overwrite": True,
-            }
-        },
         "CONCURRENT_REQUESTS": 10,
         "DOWNLOAD_DELAY": 1,
         "AUTOTHROTTLE_ENABLED": True,

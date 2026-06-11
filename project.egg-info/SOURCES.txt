@@ -1,7 +1,9 @@
 setup.py
 funda_listing/__init__.py
+funda_listing/gcs_creds.py
 funda_listing/items.py
 funda_listing/settings.py
+funda_listing/uri_params.py
 funda_listing/pages/__init__.py
 funda_listing/pages/funda/__init__.py
 funda_listing/pages/funda/com/__init__.py

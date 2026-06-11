@@ -4,3 +4,4 @@ web-poet
 scrapy-poet
 scrapy-zyte-api
 zyte_common_items
+google-cloud-storage
