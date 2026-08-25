@@ -1,6 +1,8 @@
 setup.py
 funda_listing/__init__.py
 funda_listing/gcs_creds.py
+funda_listing/immoweb_items.py
+funda_listing/immoweb_pipelines.py
 funda_listing/items.py
 funda_listing/settings.py
 funda_listing/uri_params.py
@@ -8,8 +10,12 @@ funda_listing/pages/__init__.py
 funda_listing/pages/funda/__init__.py
 funda_listing/pages/funda/com/__init__.py
 funda_listing/pages/funda/com/product.py
+funda_listing/pages/immoweb/__init__.py
+funda_listing/pages/immoweb/be/__init__.py
+funda_listing/pages/immoweb/be/product.py
 funda_listing/spiders/__init__.py
 funda_listing/spiders/funda.py
+funda_listing/spiders/immoweb.py
 project.egg-info/PKG-INFO
 project.egg-info/SOURCES.txt
 project.egg-info/dependency_links.txt
