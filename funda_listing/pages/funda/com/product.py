@@ -278,11 +278,26 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
         if not data:
             return {}
 
+        # On /detail/ pages Funda appends the listing id to the key
+        # (cachedListingData_nl_44596091), so match by prefix. Project data
+        # still wins over listing data when both are present.
+        listing_val = None
         for item in data:
             if isinstance(item, dict):
-                idx = item.get("cachedProjectData_nl") or item.get("cachedListingData_nl")
-                if isinstance(idx, int) and 0 <= idx < len(data):
-                    return self.hydrate(data[idx], data) or {}
+                for key, val in item.items():
+                    if not isinstance(key, str):
+                        continue
+                    if key.startswith("cachedProjectData_nl"):
+                        hydrated = self.hydrate(val, data)
+                        if isinstance(hydrated, dict):
+                            return hydrated
+                    elif key.startswith("cachedListingData_nl") and listing_val is None:
+                        listing_val = val
+
+        if listing_val is not None:
+            hydrated = self.hydrate(listing_val, data)
+            if isinstance(hydrated, dict):
+                return hydrated
         return {}
 
     # -----------------------------------------------------------------------

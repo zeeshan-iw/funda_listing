@@ -25,6 +25,13 @@ class ImmowebSpider(scrapy.Spider):
     # being a place themselves (…/brussels/district, …/limburg/province).
     _PLACE_KINDS = ("district", "province", "municipality", "city", "region", "commune")
 
+    # Transaction path segments mapped onto funda's label vocabulary, so
+    # files from both spiders read the same way (buy/rent).
+    _KIND_SEGMENTS = {
+        "buy": ("for-sale", "te-koop", "a-vendre"),
+        "rent": ("for-rent", "te-huur", "a-louer"),
+    }
+
     custom_settings = {
         "RETRY_ENABLED": True,
         "RETRY_TIMES": 5,
@@ -46,14 +53,16 @@ class ImmowebSpider(scrapy.Spider):
         "ITEM_PIPELINES": {
             "funda_listing.immoweb_pipelines.CoverageStatsPipeline": 900,
         },
-        "FEEDS": {},  # Disables the global GCS export for this spider
+        # No FEEDS override: the global GCS export applies, with uri_params
+        # routing the file to country=be (or country=lu for a countries=LU
+        # search) and naming it from the label derived in __init__.
     }
 
     def __init__(self, *args, include_raw=None, max_items=None, probe_only=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Derived here rather than in start() because the feed exporter reads
         # these when the spider opens, which happens before start() runs.
-        self.region, self.scope = self._label(kwargs.get("extra_url") or "")
+        self.region, self.label = self._label(kwargs.get("extra_url") or "")
         self.include_raw = str(include_raw or "").lower() in ("1", "true", "yes")
         self.probe_only = str(probe_only or "").lower() in ("1", "true", "yes")
         self.max_items = int(max_items) if max_items else None
@@ -87,31 +96,43 @@ class ImmowebSpider(scrapy.Spider):
 
     @classmethod
     def _label(cls, url: str):
-        """(region, scope) for naming output files.
+        """(region, label) for routing and naming the output file.
 
-        A timestamp alone doesn't say which crawl a file belongs to, so the
-        search URL's own path is used:
-            …/house-and-apartment/for-sale/brussels/district  ->
-                region "brussels", scope "house-and-apartment-for-sale"
-        Falls back to "belgium" when the URL carries no place segment.
+        region picks the GCS country= folder: "luxembourg" for a
+        ?countries=LU search (immoweb has no .lu site — the Grand Duchy is
+        reached through immoweb.be with that filter), otherwise "belgium",
+        unless the URL names a place (…/for-sale/brussels/district).
+
+        label names the file in funda's <status>-<kind>[-<place>]
+        convention, e.g. available-buy / available-rent-brussels. The place
+        is included only for sub-country scopes — country-wide crawls read
+        exactly like funda's (funda_sold-buy ↔ immoweb_available-buy).
         """
         try:
-            parts = [s for s in urlsplit(url).path.split("/") if s]
+            split = urlsplit(url)
+            parts = [s for s in split.path.split("/") if s]
         except ValueError:
-            return "unknown", "listings"
+            return "unknown", "available"
         idx = next((i for i, s in enumerate(parts) if s in ("search", "search-results")), None)
         if idx is None:
-            return "unknown", "listings"
+            return "unknown", "available"
 
         rest = parts[idx + 1:]
-        region = "belgium"
+        countries = dict(parse_qsl(split.query)).get("countries", "")
+        region = "luxembourg" if countries.strip().upper() == "LU" else "belgium"
+        place = ""
         for i, seg in enumerate(rest):
             if seg in cls._PLACE_KINDS and i > 0:
                 region = rest[i - 1]
+                place = cls._slug(rest[i - 1])
                 rest = rest[:i - 1]
                 break
-        scope = "-".join(rest) or "listings"
-        return cls._slug(region) or "belgium", cls._slug(scope) or "listings"
+        kind = next(
+            (k for k, segs in cls._KIND_SEGMENTS.items() if any(s in segs for s in rest)),
+            "",
+        )
+        label = "-".join(p for p in ("available", kind, place) if p)
+        return cls._slug(region) or "belgium", label
 
     @staticmethod
     def _derive_config(url: str):
