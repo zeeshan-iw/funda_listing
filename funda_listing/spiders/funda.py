@@ -1,6 +1,6 @@
 import json
 import re
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlunparse
 
 import attrs
 import scrapy
@@ -31,18 +31,84 @@ _PRICE_CEIL_RENT =     25_000
 # parameter.
 _MAX_PAGES_TOKEN = re.compile(r"[?,&]\s*max_pages\s*(?::|=)\s*(\d+)\s*")
 
+# Zyte API parameters for Funda.nl.
+# Funda's Akamai bot manager blocks raw HTTP requests with 520;
+# browserHtml renders JavaScript challenges and returns the real DOM, while
+# geolocation="NL" prevents regional blocks.
+_ZYTE_PARAMS = {
+    "browserHtml": True,
+    "geolocation": "NL",
+    "httpResponseHeaders": True,
+}
+
 
 class FundaSpider(scrapy.Spider):
     name = "funda"
 
     custom_settings = {
-        "CONCURRENT_REQUESTS": 10,
-        "DOWNLOAD_DELAY": 1,
-        "AUTOTHROTTLE_ENABLED": True,
-        "AUTOTHROTTLE_START_DELAY": 3,
-        "AUTOTHROTTLE_MAX_DELAY": 10,
+        "CONCURRENT_REQUESTS": 16,
+        "CONCURRENT_REQUESTS_PER_DOMAIN": 16,
+        "DOWNLOAD_DELAY": 0.2,
+        "AUTOTHROTTLE_ENABLED": False,
+        "RETRY_TIMES": 4,
+        "RETRY_HTTP_CODES": [500, 502, 503, 504, 520, 522, 524, 408, 429],
+        "ZYTE_API_DEFAULT_PARAMS": {
+            "geolocation": "NL",
+        },
         "LOG_LEVEL": "INFO",
     }
+
+    def errback_zyte(self, failure):
+        from scrapy.downloadermiddlewares.retry import get_retry_request
+        from zyte_api import RequestError
+
+        if failure.check(RequestError):
+            self.logger.warning(
+                "Zyte API RequestError on %s: %s",
+                failure.request.url,
+                failure.value,
+            )
+            retry_req = get_retry_request(
+                failure.request,
+                spider=self,
+                reason=failure.value,
+            )
+            if retry_req:
+                return retry_req
+        self.logger.error("Download failed on %s: %s", failure.request.url, failure.value)
+
+    @staticmethod
+    def _normalize_search_url(url: str) -> str:
+        """Normalize query parameters on Funda search URLs.
+
+        Funda's frontend formats array filters as JSON arrays (e.g.
+        selected_area=["heemskerk"], availability=["unavailable"]) and string
+        filters in quotes (sort="publish_date_utc_desc").
+        Additionally, Funda uses 'heel-nederland' for the whole country rather
+        than 'nl'. If raw/unbracketed parameters or 'nl' are passed, normalize
+        them so Funda's search engine and WAF accept the request.
+        """
+        parsed = urlparse(url)
+        if not parsed.query:
+            return url
+        params = parse_qsl(parsed.query, keep_blank_values=True)
+        normalized = []
+        for key, val in params:
+            val_clean = val.strip()
+            if key == "selected_area":
+                clean_slug = val_clean.strip("[]\"'").lower()
+                if clean_slug == "nl":
+                    val_clean = json.dumps(["heel-nederland"])
+                elif not (val_clean.startswith("[") and val_clean.endswith("]")):
+                    val_clean = json.dumps([val_clean])
+            elif key == "availability":
+                if not (val_clean.startswith("[") and val_clean.endswith("]")):
+                    val_clean = json.dumps([val_clean])
+            elif key == "sort":
+                if not (val_clean.startswith('"') and val_clean.endswith('"')):
+                    val_clean = json.dumps(val_clean)
+            normalized.append((key, val_clean))
+        return urlunparse(parsed._replace(query=urlencode(normalized)))
 
 
     def __init__(self, *args, status_only=None, max_pages=None, **kwargs):
@@ -77,6 +143,7 @@ class FundaSpider(scrapy.Spider):
         extra_url, url_max_pages = self._extract_max_pages(extra_url.strip())
         if url_max_pages:
             self.max_pages = url_max_pages
+        extra_url = self._normalize_search_url(extra_url)
         parsed = urlparse(extra_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             self.logger.error("Invalid URL: %s", extra_url)
@@ -93,8 +160,9 @@ class FundaSpider(scrapy.Spider):
         yield scrapy.Request(
             extra_url.strip(),
             callback=self.parse_listing,
+            errback=self.errback_zyte,
             meta={
-                "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
+                "zyte_api": _ZYTE_PARAMS,
                 "job_key": "extra_url",
             },
         )
@@ -149,7 +217,8 @@ class FundaSpider(scrapy.Spider):
                 yield response.follow(
                     url,
                     callback=self.parse_detail,
-                    meta={"zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True}},
+                    errback=self.errback_zyte,
+                    meta={"zyte_api": _ZYTE_PARAMS},
                 )
 
         except Exception as e:
@@ -167,8 +236,9 @@ class FundaSpider(scrapy.Spider):
             yield response.follow(
                 next_url,
                 callback=self.parse_listing,
+                errback=self.errback_zyte,
                 meta={
-                    "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
+                    "zyte_api": _ZYTE_PARAMS,
                     "job_key": response.meta.get("job_key"),
                 },
             )
@@ -287,8 +357,9 @@ class FundaSpider(scrapy.Spider):
             yield response.follow(
                 new_url,
                 callback=self.parse_listing,
+                errback=self.errback_zyte,
                 meta={
-                    "zyte_api": {"httpResponseBody": True, "httpResponseHeaders": True},
+                    "zyte_api": _ZYTE_PARAMS,
                     "job_key": response.meta.get("job_key"),
                 },
             )
