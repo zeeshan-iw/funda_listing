@@ -1,0 +1,25 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+project.egg-info/
+
+# Local test & log files
+*.log
+*.jsonl
+heemskerk_listings.json
+run_status_only_test.py
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
