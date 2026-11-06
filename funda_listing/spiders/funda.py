@@ -1,3 +1,4 @@
+from collections import defaultdict
 import json
 import re
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlunparse
@@ -17,6 +18,7 @@ _SOLD_URL_MARKERS = ("/verkocht/", "/verhuurd/")
 # When a query exceeds this we split it into two sub-queries by price range and
 # recurse until every sub-range is under the cap.
 _SPLIT_THRESHOLD = 9_500
+_FUNDA_MAX_SEARCH_PAGE = 666
 
 # Upper price ceiling used as the starting split boundary.
 # /koop (buy) listings rarely exceed €10M; /huur (rent) rarely exceed €25k/month.
@@ -55,6 +57,7 @@ class FundaSpider(scrapy.Spider):
         "ZYTE_API_DEFAULT_PARAMS": {
             "geolocation": "NL",
         },
+        "CLOSESPIDER_TIMEOUT": 18000,  # 5 hours maximum safety guardrail
         "LOG_LEVEL": "INFO",
     }
 
@@ -113,6 +116,8 @@ class FundaSpider(scrapy.Spider):
 
     def __init__(self, *args, status_only=None, max_pages=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.seen_listing_urls = set()
+        self.seen_listing_urls_by_search = defaultdict(set)
         # -a status_only=<url> crawls that search in status-only mode (every
         # listing a status + address record, closed listings followed);
         # -a extra_url=<url> crawls it in full mode. Normalised here rather
@@ -205,15 +210,30 @@ class FundaSpider(scrapy.Spider):
                     # Range too narrow to split — fall through and paginate as-is,
                     # accepting the ~10k cap for this bucket.
 
+            # Scoped key for tracking listings within this specific search query (ignoring page param)
+            query_key_dict = {k: v for k, v in query.items() if k != "page"}
+            search_key = urlunparse(parsed._replace(query=urlencode(query_key_dict, doseq=True)))
+
+            new_in_query = 0
             for entry in items:
                 url = entry.get("url")
                 if not url:
                     continue
+                if url not in self.seen_listing_urls_by_search[search_key]:
+                    self.seen_listing_urls_by_search[search_key].add(url)
+                    new_in_query += 1
+
                 # Normal runs skip closed listings; -a status_only=<url> opts
                 # into harvesting them (as status + address records).
                 if not self.status_only and any(marker in url for marker in _SOLD_URL_MARKERS):
                     self.logger.debug("Skipping closed listing: %s", url)
                     continue
+
+                if url in self.seen_listing_urls:
+                    self.logger.debug("Listing already queued: %s", url)
+                    continue
+                self.seen_listing_urls.add(url)
+
                 yield response.follow(
                     url,
                     callback=self.parse_detail,
@@ -223,30 +243,47 @@ class FundaSpider(scrapy.Spider):
 
         except Exception as e:
             self.logger.error("JSON parse error: %s | %s", response.url, e)
+            return
 
-        if items:
-            if self.max_pages and current_page >= self.max_pages:
-                self.logger.info(
-                    "max_pages=%d reached at page %d — pagination stopped for: %s",
-                    self.max_pages, current_page, response.url,
-                )
-                return
-            query["page"] = [str(current_page + 1)]
-            next_url = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
-            yield response.follow(
-                next_url,
-                callback=self.parse_listing,
-                errback=self.errback_zyte,
-                meta={
-                    "zyte_api": _ZYTE_PARAMS,
-                    "job_key": response.meta.get("job_key"),
-                },
-            )
-        else:
+        if not items:
             self.logger.info(
                 "No items on page %d — pagination stopped for: %s",
                 current_page, response.url,
             )
+            return
+
+        if self.max_pages and current_page >= self.max_pages:
+            self.logger.info(
+                "max_pages=%d reached at page %d — pagination stopped for: %s",
+                self.max_pages, current_page, response.url,
+            )
+            return
+
+        if current_page >= _FUNDA_MAX_SEARCH_PAGE:
+            self.logger.info(
+                "Reached Funda maximum search page (%d) — pagination stopped for: %s",
+                current_page, response.url,
+            )
+            return
+
+        if current_page > 1 and new_in_query == 0:
+            self.logger.info(
+                "Page %d returned 0 new listings (all items already seen) — pagination stopped for: %s",
+                current_page, response.url,
+            )
+            return
+
+        query["page"] = [str(current_page + 1)]
+        next_url = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+        yield response.follow(
+            next_url,
+            callback=self.parse_listing,
+            errback=self.errback_zyte,
+            meta={
+                "zyte_api": _ZYTE_PARAMS,
+                "job_key": response.meta.get("job_key"),
+            },
+        )
 
     @staticmethod
     def _extract_max_pages(url):

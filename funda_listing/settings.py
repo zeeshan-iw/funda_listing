@@ -19,6 +19,9 @@ DOWNLOADER_MIDDLEWARES = {
 
 COOKIES_ENABLED = False
 
+# Global safety guardrail: no job should ever run longer than 5 hours (18000 seconds).
+CLOSESPIDER_TIMEOUT = 18000
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 

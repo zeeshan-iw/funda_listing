@@ -229,6 +229,16 @@ def _split_house_number(raw_hn: str, raw_hs: str):
     return hn, hs
 
 
+_BROKER_DATA_CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
+_BROKER_LOCKS: Dict[str, asyncio.Lock] = {}
+
+
+def _get_broker_lock(b_id: str) -> asyncio.Lock:
+    if b_id not in _BROKER_LOCKS:
+        _BROKER_LOCKS[b_id] = asyncio.Lock()
+    return _BROKER_LOCKS[b_id]
+
+
 @handle_urls("funda.nl")
 @attrs.define
 class FundaListingPage(WebPage, Returns[FundaListingItem]):
@@ -597,6 +607,32 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
         return [r for r in results if isinstance(r, Agent)]
 
     async def fetch_single_broker(self, b_id: str) -> Optional[Agent]:
+        lock = _get_broker_lock(b_id)
+        async with lock:
+            if b_id in _BROKER_DATA_CACHE:
+                broker_data = _BROKER_DATA_CACHE[b_id]
+            else:
+                broker_data = await self._download_broker_data(b_id)
+                _BROKER_DATA_CACHE[b_id] = broker_data
+
+        if not broker_data:
+            return None
+
+        is_primary = (
+            str(self.nuxt_data.get("tracking", {}).get("main_broker_id")) == b_id
+        )
+        return Agent(
+            id=b_id,
+            office_id=broker_data.get("office_id", ""),
+            relative_url=f"/makelaar/{b_id}/",
+            is_primary=is_primary,
+            logo_id=broker_data.get("logo_id", ""),
+            logo_url=broker_data.get("logo_url", ""),
+            name=broker_data.get("name", ""),
+            association=broker_data.get("association", ""),
+        )
+
+    async def _download_broker_data(self, b_id: str) -> Optional[Dict[str, Any]]:
         url = f"https://www.funda.nl/makelaar/{b_id}/"
         try:
             response = await self.http.get(url)
@@ -644,20 +680,14 @@ class FundaListingPage(WebPage, Returns[FundaListingItem]):
 
             o_id = resolved.get("officeId")
             final_office_id = o_id.get("id") if isinstance(o_id, dict) else o_id
-            is_primary = (
-                str(self.nuxt_data.get("tracking", {}).get("main_broker_id")) == b_id
-            )
 
-            return Agent(
-                id=b_id,
-                office_id=str(final_office_id) if final_office_id else "",
-                relative_url=f"/makelaar/{b_id}/",
-                is_primary=is_primary,
-                logo_id=logo_id_str,
-                logo_url=logo_url_str,
-                name=resolved.get("displayName") or "",
-                association=resolved.get("affiliation") or "",
-            )
+            return {
+                "office_id": str(final_office_id) if final_office_id else "",
+                "logo_id": logo_id_str,
+                "logo_url": logo_url_str,
+                "name": resolved.get("displayName") or "",
+                "association": resolved.get("affiliation") or "",
+            }
         except Exception as exc:
             logger.warning("fetch_single_broker failed for broker %s: %s", b_id, exc)
             return None
