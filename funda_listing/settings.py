@@ -37,6 +37,9 @@ FUNDA_GCS_BUCKET = "real-estate-forecasting-raw"
 
 FEED_URI_PARAMS = "funda_listing.uri_params.uri_params"
 
+# Do not export empty feeds (prevents overwriting or creating empty GCS files when 0 items are scraped)
+FEED_STORE_EMPTY = False
+
 # %(bucket)s, %(country)s, %(date)s and %(fileid)s are filled by uri_params;
 # %(time)s is a Scrapy built-in. %(fileid)s is spider-name + optional job
 # label + optional Zyte job key, e.g. funda_available-buy_862318-1-348.
@@ -47,5 +50,6 @@ FEEDS = {
     "gs://%(bucket)s/country=%(country)s/actor=zyte/ingestion_date=%(date)s/"
     "%(fileid)s_%(time)s.json": {
         "format": "json",
+        "store_empty": False,
     },
 }
