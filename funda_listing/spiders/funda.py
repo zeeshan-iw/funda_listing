@@ -90,10 +90,20 @@ class FundaSpider(scrapy.Spider):
         Additionally, Funda uses 'heel-nederland' for the whole country rather
         than 'nl'. If raw/unbracketed parameters or 'nl' are passed, normalize
         them so Funda's search engine and WAF accept the request.
+
+        Also strips any trailing slash on the search path (e.g. /zoeken/koop/ -> /zoeken/koop)
+        so Funda's router and Akamai do not reject or redirect the request.
         """
         parsed = urlparse(url)
+        clean_path = parsed.path.rstrip("/")
+        if not clean_path:
+            clean_path = "/"
+
         if not parsed.query:
-            return url
+            if clean_path in ("/zoeken/koop", "/zoeken/huur"):
+                return urlunparse(parsed._replace(path=clean_path, query=urlencode([("selected_area", json.dumps(["heel-nederland"]))])) )
+            return urlunparse(parsed._replace(path=clean_path))
+
         params = parse_qsl(parsed.query, keep_blank_values=True)
         normalized = []
         for key, val in params:
@@ -111,7 +121,7 @@ class FundaSpider(scrapy.Spider):
                 if not (val_clean.startswith('"') and val_clean.endswith('"')):
                     val_clean = json.dumps(val_clean)
             normalized.append((key, val_clean))
-        return urlunparse(parsed._replace(query=urlencode(normalized)))
+        return urlunparse(parsed._replace(path=clean_path, query=urlencode(normalized)))
 
 
     def __init__(self, *args, status_only=None, max_pages=None, **kwargs):
