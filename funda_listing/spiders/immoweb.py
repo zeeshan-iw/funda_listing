@@ -58,11 +58,28 @@ class ImmowebSpider(scrapy.Spider):
         # search) and naming it from the label derived in __init__.
     }
 
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super().from_crawler(crawler, *args, **kwargs)
+        # Per-spider time limit: -a time_limit_hours=8 (or the TIME_LIMIT_HOURS
+        # job setting in Dash) overrides the global 5 h CLOSESPIDER_TIMEOUT
+        # guardrail. Applied here because settings are still mutable after
+        # spider creation but before the CloseSpider extension reads them.
+        hours = kwargs.get("time_limit_hours") or crawler.settings.get("TIME_LIMIT_HOURS")
+        if hours:
+            try:
+                seconds = int(float(hours) * 3600)
+                crawler.settings.set("CLOSESPIDER_TIMEOUT", seconds, priority="cmdline")
+                spider.logger.info("time_limit_hours=%s -> CLOSESPIDER_TIMEOUT=%ds", hours, seconds)
+            except (TypeError, ValueError):
+                spider.logger.error("Invalid time_limit_hours=%r; keeping the default guardrail", hours)
+        return spider
+
     def __init__(self, *args, include_raw=None, max_items=None, probe_only=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Derived here rather than in start() because the feed exporter reads
         # these when the spider opens, which happens before start() runs.
-        self.region, self.label = self._label(kwargs.get("extra_url") or "")
+        self.region, self.label, self.country = self._label(kwargs.get("extra_url") or "")
         self.include_raw = str(include_raw or "").lower() in ("1", "true", "yes")
         self.probe_only = str(probe_only or "").lower() in ("1", "true", "yes")
         self.max_items = int(max_items) if max_items else None
@@ -96,12 +113,17 @@ class ImmowebSpider(scrapy.Spider):
 
     @classmethod
     def _label(cls, url: str):
-        """(region, label) for routing and naming the output file.
+        """(region, label, country) for routing and naming the output file.
 
-        region picks the GCS country= folder: "luxembourg" for a
-        ?countries=LU search (immoweb has no .lu site — the Grand Duchy is
-        reached through immoweb.be with that filter), otherwise "belgium",
-        unless the URL names a place (…/for-sale/brussels/district).
+        country picks the GCS country= folder and is decided ONLY by an
+        explicit ?countries=LU query (immoweb has no .lu site — the Grand
+        Duchy is reached through immoweb.be with that filter): "lu" then,
+        "be" for everything else. A Belgian-province search such as
+        …/for-sale/luxembourg/province is a place, NOT the Grand Duchy, and
+        must land in country=be.
+
+        region keeps the human-readable scope (the ?countries=LU value, a
+        place named in the path like …/brussels/district, or "belgium").
 
         label names the file in funda's <status>-<kind>[-<place>]
         convention, e.g. available-buy / available-rent-brussels. The place
@@ -112,14 +134,16 @@ class ImmowebSpider(scrapy.Spider):
             split = urlsplit(url)
             parts = [s for s in split.path.split("/") if s]
         except ValueError:
-            return "unknown", "available"
+            return "unknown", "available", "be"
         idx = next((i for i, s in enumerate(parts) if s in ("search", "search-results")), None)
         if idx is None:
-            return "unknown", "available"
+            return "unknown", "available", "be"
 
         rest = parts[idx + 1:]
         countries = dict(parse_qsl(split.query)).get("countries", "")
-        region = "luxembourg" if countries.strip().upper() == "LU" else "belgium"
+        is_lu = countries.strip().upper() == "LU"
+        region = "luxembourg" if is_lu else "belgium"
+        country = "lu" if is_lu else "be"
         place = ""
         for i, seg in enumerate(rest):
             if seg in cls._PLACE_KINDS and i > 0:
@@ -132,7 +156,7 @@ class ImmowebSpider(scrapy.Spider):
             "",
         )
         label = "-".join(p for p in ("available", kind, place) if p)
-        return cls._slug(region) or "belgium", label
+        return cls._slug(region) or "belgium", label, country
 
     @staticmethod
     def _derive_config(url: str):
@@ -357,6 +381,11 @@ class ImmowebSpider(scrapy.Spider):
         yield item
 
     def closed(self, reason):
+        if self.items_scraped == 0:
+            self.logger.critical(
+                "ZERO items emitted (reason: %s) — this crawl delivered nothing "
+                "and wrote no feed file to GCS.", reason,
+            )
         self.logger.info(
             "done: %d leaf slices, %d reachable listings (sum of slice totals), "
             "%d unique discovered, %d items emitted (%s)",

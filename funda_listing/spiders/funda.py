@@ -117,17 +117,37 @@ class FundaSpider(scrapy.Spider):
             elif key == "availability":
                 if not (val_clean.startswith("[") and val_clean.endswith("]")):
                     val_clean = json.dumps([val_clean])
-            elif key == "sort":
+            elif key in ("sort", "publication_date"):
+                # String-typed filters travel JSON-quoted on funda's frontend
+                # (sort="publish_date_utc_desc", publication_date="1").
                 if not (val_clean.startswith('"') and val_clean.endswith('"')):
                     val_clean = json.dumps(val_clean)
             normalized.append((key, val_clean))
         return urlunparse(parsed._replace(path=clean_path, query=urlencode(normalized)))
 
 
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super().from_crawler(crawler, *args, **kwargs)
+        # Per-spider time limit: -a time_limit_hours=8 (or the TIME_LIMIT_HOURS
+        # job setting in Dash) overrides the 5 h CLOSESPIDER_TIMEOUT guardrail
+        # in custom_settings. Applied here because settings are still mutable
+        # after spider creation but before the CloseSpider extension reads them.
+        hours = kwargs.get("time_limit_hours") or crawler.settings.get("TIME_LIMIT_HOURS")
+        if hours:
+            try:
+                seconds = int(float(hours) * 3600)
+                crawler.settings.set("CLOSESPIDER_TIMEOUT", seconds, priority="cmdline")
+                spider.logger.info("time_limit_hours=%s -> CLOSESPIDER_TIMEOUT=%ds", hours, seconds)
+            except (TypeError, ValueError):
+                spider.logger.error("Invalid time_limit_hours=%r; keeping the default guardrail", hours)
+        return spider
+
     def __init__(self, *args, status_only=None, max_pages=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.seen_listing_urls = set()
         self.seen_listing_urls_by_search = defaultdict(set)
+        self.items_scraped = 0
         # -a status_only=<url> crawls that search in status-only mode (every
         # listing a status + address record, closed listings followed);
         # -a extra_url=<url> crawls it in full mode. Normalised here rather
@@ -285,6 +305,13 @@ class FundaSpider(scrapy.Spider):
 
         query["page"] = [str(current_page + 1)]
         next_url = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+        # Re-normalize before every search request: the response URL can come
+        # back with funda's JSON quoting stripped (publication_date=1 instead
+        # of "1", availability=available instead of ["available"]), and the
+        # unquoted form is exactly what Akamai's WAF bans with
+        # "check your URL query parameters" (job 1/695 lost ~7 of ~9 pages to
+        # this). Normalizing here keeps every request in frontend-exact form.
+        next_url = self._normalize_search_url(next_url)
         yield response.follow(
             next_url,
             callback=self.parse_listing,
@@ -401,6 +428,7 @@ class FundaSpider(scrapy.Spider):
             new_url = urlunparse(
                 parsed._replace(query=urlencode(new_query, doseq=True))
             )
+            new_url = self._normalize_search_url(new_url)
             yield response.follow(
                 new_url,
                 callback=self.parse_listing,
@@ -421,6 +449,7 @@ class FundaSpider(scrapy.Spider):
                 )
             if self.status_only:
                 # Status-only mode: status + address records only.
+                self.items_scraped += 1
                 yield {
                     "status": page.status,
                     "address": attrs.asdict(page.address),
@@ -430,6 +459,16 @@ class FundaSpider(scrapy.Spider):
                 # onder-bod listings are still fully marketed pages. The
                 # item's own status field still says which it is.
                 item = await page.to_item()
+                self.items_scraped += 1
                 yield item
         except Exception as e:
             self.logger.error("parse_detail failed for %s: %s", response.url, e)
+
+    def closed(self, reason):
+        if self.items_scraped == 0:
+            self.logger.critical(
+                "ZERO items scraped (reason: %s) — this crawl delivered nothing "
+                "and wrote no feed file to GCS.", reason,
+            )
+        else:
+            self.logger.info("Finished with %d items (%s)", self.items_scraped, reason)

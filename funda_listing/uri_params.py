@@ -55,10 +55,14 @@ def uri_params(params, spider):
     if getattr(spider, "name", "") == "immoweb":
         # Immoweb searches carry no koop/huur or availability params; the
         # label + region logic in the spider's __init__ runs before the feed
-        # opens, so its attributes are read here. Region routes the country
-        # folder (luxembourg → lu, everything else → be).
+        # opens, so its attributes are read here. Country is "lu" ONLY for an
+        # explicit ?countries=LU search (the Grand Duchy); a Belgian-province
+        # search like …/luxembourg/province is "be". The region fallback keeps
+        # the old behaviour for a spider build without the country attribute.
         label = params.get("job") or getattr(spider, "label", "") or "search"
-        country = "lu" if getattr(spider, "region", "") == "luxembourg" else "be"
+        country = getattr(spider, "country", "") or (
+            "lu" if getattr(spider, "region", "") == "luxembourg" else "be"
+        )
     else:
         # The crawl URL arrives as extra_url (full mode) or status_only
         # (status + address records); the label describes the URL's content.
